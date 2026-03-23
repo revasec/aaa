@@ -1,0 +1,53 @@
+name: Tailscale RDP (Auth Key Manual Input)
+
+on: 
+  workflow_dispatch:
+    inputs:
+      auth_key:
+        description: 'Enter Tailscale Auth Key'
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: windows-2019
+
+    steps:
+      - name: Create User
+        run: |
+          $user = "null-RDP"
+          $password = "null@1337"
+          net user $user $password /add
+          net localgroup administrators $user /add
+          net localgroup "Remote Desktop Users" $user /add
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Write-Host "User Created: $user" -ForegroundColor Green
+
+      - name: Setup Tailscale
+        env:
+          # Paste Your auth Key
+          TAILSCALE_AUTHKEY: ${{ github.event.inputs.auth_key }}
+        run: |
+          # 1. Install Tailscale via Chocolatey
+          choco install tailscale -y
+          
+          # 2. Wait a bit
+          Start-Sleep -Seconds 5
+          
+          # 3. Authenticate Tailscale
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey $env:TAILSCALE_AUTHKEY --hostname "github-rdp" --accept-routes
+          
+          Write-Host "===================================================" -ForegroundColor Yellow
+          Write-Host "✅ Tailscale Connected!" -ForegroundColor Green
+          Write-Host "Go to your Tailscale Dashboard or App to see the IP." -ForegroundColor Cyan
+          Write-Host "===================================================" -ForegroundColor Yellow
+
+      - name: Keep Alive (6 Hours)
+        run: |
+          $seconds = 21600
+          while ($seconds -gt 0) {
+            Start-Sleep -Seconds 60
+            $seconds -= 60
+            Write-Host "Server Running... ($seconds sec left)"
+          }
