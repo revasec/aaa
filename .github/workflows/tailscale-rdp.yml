@@ -1,40 +1,52 @@
-name: Tailscale RDP (100% Works)
+name: Tailscale RDP (Fixed)
 
 on: workflow_dispatch
 
 jobs:
   build:
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     steps:
-      - name: Create User
+      - name: Create User + Enable RDP
         run: |
           $user = "null-RDP"
           $password = "null@1337"
+
           net user $user $password /add
           net localgroup administrators $user /add
           net localgroup "Remote Desktop Users" $user /add
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+
+          # Enable RDP
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+
+          # Enable firewall rules
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Write-Host "User Created: $user" -ForegroundColor Green
+
+          # Force RDP service
+          Set-Service -Name TermService -StartupType Automatic
+          Start-Service -Name TermService
+
+          Write-Host "User + RDP ready" -ForegroundColor Green
 
       - name: Setup Tailscale
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
-          # 1. Install Tailscale via Chocolatey
           choco install tailscale -y
-          
-          # 2. Wait a bit
-          Start-Sleep -Seconds 5
-          
-          # 3. Authenticate Tailscale (Advertise as GitHub-RDP)
+          Start-Sleep -Seconds 10
+
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey $env:TAILSCALE_AUTHKEY --hostname "github-rdp" --accept-routes
-          
-          Write-Host "===================================================" -ForegroundColor Yellow
-          Write-Host "✅ Tailscale Connected!" -ForegroundColor Green
-          Write-Host "Go to your Tailscale Dashboard or App to see the IP." -ForegroundColor Cyan
-          Write-Host "===================================================" -ForegroundColor Yellow
+
+          Write-Host "Waiting for network..." -ForegroundColor Yellow
+          Start-Sleep -Seconds 15
+
+          # Show IP
+          & "C:\Program Files\Tailscale\tailscale.exe" ip
+
+      - name: Debug RDP
+        run: |
+          Write-Host "Checking RDP port..." -ForegroundColor Cyan
+          netstat -an | findstr 3389
 
       - name: Keep Alive (6 Hours)
         run: |
@@ -44,4 +56,3 @@ jobs:
             $seconds -= 60
             Write-Host "Server Running... ($seconds sec left)"
           }
-          
